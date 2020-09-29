@@ -1,8 +1,0 @@
-tensorflow==1.15
-pandas==1.0.5
-numpy==1.18.5
-sklearn==0.22.2
-matplotlib==3.2.2
-pyproj==1.9.6
-basemap==1.2.1
-pyshp==2.1.2
