@@ -1,9 +1,9 @@
 name: baynne-env
 channels:
-  - anaconda
   - conda-forge
-  - defaults
+  - anaconda
   - conda-forge/label/cf201901
+  - defaults
 dependencies:
   - tensorflow==1.10=mkl*
   - basemap==1.2.1
