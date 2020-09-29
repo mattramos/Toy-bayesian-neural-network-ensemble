@@ -2,12 +2,13 @@ import tensorflow as tf
 import numpy as np
 
 class NN():
-    def __init__(self, x_dim, y_dim, hidden_size, init_stddev_1_w, init_stddev_1_b, init_stddev_2_w, init_stddev_2_b, init_stddev_3_w, init_stddev_noise_w, learning_rate, model_bias_from_layer):
+    def __init__(self, x_dim, y_dim, alpha_dim, num_models, n_data, hidden_size, init_stddev_1_w, init_stddev_1_b, init_stddev_2_w, init_stddev_2_b, init_stddev_3_w, init_stddev_noise_w, learning_rate):
         # setting up as for a usual NN
         self.x_dim = x_dim
         self.y_dim = y_dim
         self.hidden_size = hidden_size
         self.learning_rate = learning_rate
+        self.n_data = n_data
 
         # set up NN
         self.inputs = tf.placeholder(tf.float32, [None, x_dim], name='inputs')
@@ -29,24 +30,18 @@ class NN():
 
         self.modelbias_w = tf.layers.Dense(y_dim, activation=None, use_bias=False,
                                            kernel_initializer=tf.random_normal_initializer(mean=0.,stddev=init_stddev_3_w))
-        if model_bias_from_layer == 1:
-            self.modelbias = self.modelbias_w.apply(self.layer_1)
-        elif model_bias_from_layer == 2:
-            self.modelbias = self.modelbias_w.apply(self.layer_2)
-            
-        ### Line not right. Have added, axis=1 into the reduce sum, to make the dims work and reshaped
-        # self.output now has dims which are (?, )
+
+        self.modelbias = self.modelbias_w.apply(self.layer_1)
+
         self.output = tf.reduce_sum(self.model_coeff * self.modelpred, axis=1) + tf.reshape(self.modelbias, [-1])
         
-        # NEW CODE NOISE
-        self.noise_w = tf.layers.Dense(self.y_dim, activation=tf.nn.sigmoid, use_bias=False, #changed to sigmoid for more stable training, output always positive now
-                                       kernel_initializer=tf.random_normal_initializer(mean=0.,stddev=init_stddev_noise_w))
-        self.noise_pred = 0.1*self.noise_w.apply(self.layer_1) #remember, sigmoid output is 0.5 centered when input is zero centered, so 0.1 makes it 0.05 centered
 
-        # set up loss and optimiser - we'll modify this later with anchoring regularisation
+        self.noise_w = tf.layers.Dense(self.y_dim, activation=tf.nn.sigmoid, use_bias=False, 
+                                       kernel_initializer=tf.random_normal_initializer(mean=0.,stddev=init_stddev_noise_w))
+        self.noise_pred = 0.1*self.noise_w.apply(self.layer_1) 
+
         self.opt_method = tf.train.AdamOptimizer(self.learning_rate)
         
-        # 22-4-20 Have reshaped noise_sq to match err_sq dims
         self.noise_sq = tf.square(self.noise_pred)[:,0] + 1e-6
         self.err_sq = tf.reshape(tf.square(self.y_target[:,0] - self.output), [-1])
         num_data_inv = tf.cast(tf.divide(1, tf.shape(self.inputs)[0]), dtype=tf.float32)
@@ -77,10 +72,10 @@ class NN():
         loss_anchor += lambda_anchor[4]*tf.reduce_sum(tf.square(self.w3_init - self.modelbias_w.kernel))
         loss_anchor += lambda_anchor[5]*tf.reduce_sum(tf.square(self.wn_init - self.noise_w.kernel)) # new param
 
-        self.loss_anchor = tf.cast(1.0/X_train.shape[0], dtype=tf.float32) * loss_anchor
+        self.loss_anchor = tf.cast(1.0/self.n_data, dtype=tf.float32) * loss_anchor
         
         # combine with original loss
-        self.loss_ = self.loss_ + tf.cast(1.0/X_train.shape[0], dtype=tf.float32) * loss_anchor
+        self.loss_ = self.loss_ + tf.cast(1.0/self.n_data, dtype=tf.float32) * loss_anchor
         self.optimizer = self.opt_method.minimize(self.loss_)
         return
 
@@ -108,14 +103,19 @@ class NN():
         return beta
 
     def get_alpha_w(self, x, sess):
-      feed = {self.inputs: x}
-      alpha_w = sess.run(self.layer_2, feed_dict=feed)
-      return alpha_w
+        feed = {self.inputs: x}
+        alpha_w = sess.run(self.layer_2, feed_dict=feed)
+        return alpha_w
 
     def get_w1(self, x, sess):
-      feed = {self.inputs: x}
-      w1 = sess.run(self.layer_1, feed_dict=feed)
-      return w1
+        feed = {self.inputs: x}
+        w1 = sess.run(self.layer_1, feed_dict=feed)
+        return w1
+    
+    def get_noise(self, x, sess):
+        feed = {self.inputs: x}
+        noise_sq = sess.run(self.noise_sq, feed_dict=feed)
+        return np.sqrt(noise_sq)
 
 def fn_predict_ensemble(NNs,X_train, sess):
     y_pred=[]
@@ -154,3 +154,9 @@ def get_layer1_output(NNs, X_train, sess):
     for ens in range(len(NNs)):
         w1.append(NNs[ens].get_w1(X_train, sess))
     return w1
+
+def get_aleatoric_noise(NNs, X_train, sess):
+    a_n = []
+    for ens in range(len(NNs)):
+        a_n.append(NNs[ens].get_noise(X_train, sess))
+    return a_n
