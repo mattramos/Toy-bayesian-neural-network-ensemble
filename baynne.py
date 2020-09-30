@@ -11,43 +11,43 @@ class NN():
         self.n_data = n_data
 
         # set up NN
-        self.inputs = tf.placeholder(tf.float32, [None, x_dim], name='inputs')
+        self.inputs = tf.compat.v1.placeholder(tf.float32, [None, x_dim], name='inputs')
         self.modelpred = self.inputs[:, :num_models]
         self.spacetime = self.inputs[:, num_models: num_models + alpha_dim]
         self.area_weights = self.inputs[:, -1]
-        self.y_target = tf.placeholder(tf.float32, [None, y_dim], name='target')
+        self.y_target = tf.compat.v1.placeholder(tf.float32, [None, y_dim], name='target')
         
-        self.layer_1_w = tf.layers.Dense(hidden_size, activation=tf.nn.tanh,
+        self.layer_1_w = tf.compat.v1.layers.Dense(hidden_size, activation=tf.nn.tanh,
                                          kernel_initializer=tf.random_normal_initializer(mean=0.,stddev=init_stddev_1_w),
                                          bias_initializer=tf.random_normal_initializer(mean=0.,stddev=init_stddev_1_b))
-        self.layer_1 = self.layer_1_w.apply(self.spacetime)
-        self.layer_2_w = tf.layers.Dense(num_models, activation=None,
+        self.layer_1 = self.layer_1_w(self.spacetime)
+        self.layer_2_w = tf.compat.v1.layers.Dense(num_models, activation=None,
                                          kernel_initializer=tf.random_normal_initializer(mean=0.,stddev=init_stddev_2_w),
                                          bias_initializer=tf.random_normal_initializer(mean=0.,stddev=init_stddev_2_b))
-        self.layer_2 = self.layer_2_w.apply(self.layer_1)
+        self.layer_2 = self.layer_2_w(self.layer_1)
 
         self.model_coeff = tf.nn.softmax(self.layer_2)
 
-        self.modelbias_w = tf.layers.Dense(y_dim, activation=None, use_bias=False,
+        self.modelbias_w = tf.compat.v1.layers.Dense(y_dim, activation=None, use_bias=False,
                                            kernel_initializer=tf.random_normal_initializer(mean=0.,stddev=init_stddev_3_w))
 
-        self.modelbias = self.modelbias_w.apply(self.layer_1)
+        self.modelbias = self.modelbias_w(self.layer_1)
 
         self.output = tf.reduce_sum(self.model_coeff * self.modelpred, axis=1) + tf.reshape(self.modelbias, [-1])
         
 
-        self.noise_w = tf.layers.Dense(self.y_dim, activation=tf.nn.sigmoid, use_bias=False, 
+        self.noise_w = tf.compat.v1.layers.Dense(self.y_dim, activation=tf.nn.sigmoid, use_bias=False, 
                                        kernel_initializer=tf.random_normal_initializer(mean=0.,stddev=init_stddev_noise_w))
-        self.noise_pred = 0.1*self.noise_w.apply(self.layer_1) 
+        self.noise_pred = 0.1*self.noise_w(self.layer_1) 
 
-        self.opt_method = tf.train.AdamOptimizer(self.learning_rate)
+        self.opt_method = tf.compat.v1.train.AdamOptimizer(self.learning_rate)
         
         self.noise_sq = tf.square(self.noise_pred)[:,0] + 1e-6
         self.err_sq = tf.reshape(tf.square(self.y_target[:,0] - self.output), [-1])
         num_data_inv = tf.cast(tf.divide(1, tf.shape(self.inputs)[0]), dtype=tf.float32)
 
         self.mse_ = num_data_inv * tf.reduce_sum(self.err_sq) 
-        self.loss_ = num_data_inv * (tf.reduce_sum(tf.divide(self.err_sq, self.noise_sq)) + tf.reduce_sum(tf.log(self.noise_sq)))
+        self.loss_ = num_data_inv * (tf.reduce_sum(tf.divide(self.err_sq, self.noise_sq)) + tf.reduce_sum(tf.math.log(self.noise_sq)))
         self.optimizer = self.opt_method.minimize(self.loss_)
 
         return
